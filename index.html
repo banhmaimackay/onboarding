@@ -212,7 +212,8 @@ function vStaffShell() {
 function stepCard(n, title, text, status, view, locked, ok) {
   return `<div class="card"><button class="step" data-act="go" data-view="${view}" ${locked ? 'disabled' : ''}><div class="num ${ok ? 'ok' : ''}">${ok ? '✓' : n}</div><div class="info"><h3 style="margin:0">${title}</h3><div class="muted">${text}</div></div>${status}</button></div>`;
 }
-const docsDone = () => D.docs.length > 0 && D.docs.every(d => (D.me.docs[d.id] || {}).ackAt);
+const reqDocs = () => D.docs.filter(d => d.required);
+const docsDone = () => reqDocs().length > 0 && reqDocs().every(d => (D.me.docs[d.id] || {}).ackAt);
 function vHome() {
   const m = D.me, pr = m.pr, due = pr.nextDue && pr.nextDue <= todayIso();
   const stn = m.stations.map(k => D.stations[k]).join(', ');
@@ -221,7 +222,7 @@ function vHome() {
   <p class="muted" style="margin:8px 0 0">${m.signoff ? `🎉 Onboarding complete — signed off by ${esc(m.signoff.by)} on ${fmtDate(m.signoff.date)}.` : 'Complete the 4 steps below. Your manager signs you off at the end.'}</p>
   <p class="muted" style="margin:6px 0 0">Your stations: <b>${stn ? esc(stn) : 'not assigned yet — your manager will add them as you train'}</b></p></div>
   ${stepCard(1, 'Employment forms', `${pr.forms} of ${pr.formsTotal} forms emailed${pr.formsReceived ? ' · ' + pr.formsReceived + ' received' : ''}`, pr.forms >= pr.formsTotal ? badge('done', 'Complete') : pr.forms ? badge('doing', 'In progress') : badge('todo', 'To do'), 'forms', false, pr.forms >= pr.formsTotal)}
-  ${stepCard(2, 'Required reading', `${pr.docs} of ${pr.docsTotal} documents read — Staff Handbook and more`, pr.docs >= pr.docsTotal && pr.docsTotal ? badge('done', 'Complete') : pr.docs ? badge('doing', 'In progress') : badge('todo', 'To do'), 'docs', false, pr.docs >= pr.docsTotal && pr.docsTotal > 0)}
+  ${stepCard(2, 'Required reading', `${pr.docs} of ${pr.docsTotal} required documents read — Staff Handbook and more`, pr.docs >= pr.docsTotal && pr.docsTotal ? badge('done', 'Complete') : pr.docs ? badge('doing', 'In progress') : badge('todo', 'To do'), 'docs', false, pr.docs >= pr.docsTotal && pr.docsTotal > 0)}
   ${stepCard(3, 'Knowledge Check', pr.best ? `Best result: ${pr.best.score}/${pr.best.total} (${pct(pr.best.score / pr.best.total)}%) · pass mark ${pct(D.settings.pass)}%${pr.nextDue ? ' · next check due ' + fmtDate(pr.nextDue) : ''}` : `${D.settings.quizN} random questions · pass mark ${pct(D.settings.pass)}%`, due ? badge('doing', 'Due now') : pr.passed ? badge('done', 'Passed') : !docsDone() ? badge('lock', 'Locked') : pr.best ? badge('fail', 'Not passed yet') : badge('todo', 'To do'), 'quiz', !docsDone(), pr.passed && !due)}
   ${stepCard(4, 'On-the-job sign-off', `${pr.pracDone} of ${pr.pracTotal} practical items signed off by your trainer`, m.signoff ? badge('signed', 'Signed off') : pr.pracDone >= pr.pracTotal ? badge('done', 'Ready for sign-off') : badge('doing', 'With your trainer'), 'practical', false, !!m.signoff)}`;
 }
@@ -238,18 +239,33 @@ function vForms() {
   <div class="row" style="margin-top:8px"><a class="btn ghost sm" href="${esc(f.url)}" target="_blank" rel="noopener">Open &amp; download</a>
   <label class="row" style="gap:8px;cursor:pointer"><input type="checkbox" data-act="formSent" data-id="${esc(f.id)}" ${m.formsSent[f.id] || rec ? 'checked' : ''} ${rec ? 'disabled' : ''}> I have completed and emailed this form</label></div></div>`; }).join('')}`;
 }
+function docRow(d) {
+  const r = D.me.docs[d.id] || {};
+  return `<div class="card"><button class="step" data-act="openDoc" data-id="${esc(d.id)}"><div class="num ${r.ackAt ? 'ok' : ''}">${r.ackAt ? '✓' : esc(d.icon)}</div><div class="info"><h3 style="margin:0">${esc(d.title)}</h3><div class="muted">${r.ackAt ? 'Read & understood ' + fmtDT(r.ackAt) : r.openedAt ? 'Opened — not confirmed yet' : 'Not opened'}</div></div>${r.ackAt ? badge('done', 'Done') : d.required ? badge(r.openedAt ? 'doing' : 'todo', r.openedAt ? 'In progress' : 'To read') : badge('lock', 'Optional')}</button></div>`;
+}
 function vDocs() {
-  const m = D.me;
-  return `<h1>Required reading</h1><p class="muted">Open each document, read it to the end, then confirm you have read and understood it. (${m.pr.docs} of ${m.pr.docsTotal} done)</p>` +
-    D.docs.map(d => { const r = m.docs[d.id] || {}; return `<div class="card"><button class="step" data-act="openDoc" data-id="${esc(d.id)}"><div class="num ${r.ackAt ? 'ok' : ''}">${r.ackAt ? '✓' : esc(d.icon)}</div><div class="info"><h3 style="margin:0">${esc(d.title)}</h3><div class="muted">${r.ackAt ? 'Read & understood ' + fmtDT(r.ackAt) : r.openedAt ? 'Opened — not confirmed yet' : 'Not opened'}</div></div>${r.ackAt ? badge('done', 'Done') : badge(r.openedAt ? 'doing' : 'todo', r.openedAt ? 'In progress' : 'To read')}</button></div>`; }).join('');
+  const m = D.me, req = reqDocs(), opt = D.docs.filter(d => !d.required), nextReq = req.find(d => !(m.docs[d.id] || {}).ackAt);
+  return `<h1>Documents</h1>
+  <div class="card"><h3>How it works</h3><p class="muted" style="margin:0">Open a document, read it to the end, then tap <b>"I have read and understood"</b> — the next document opens automatically. <b>Required</b> documents are the ones for your station(s). <b>Recommended</b> documents are optional, but reading them helps you understand the whole store.</p>
+  ${nextReq ? `<button class="btn block" style="margin-top:12px" data-act="openDoc" data-id="${esc(nextReq.id)}">${req.some(d => (m.docs[d.id] || {}).ackAt) ? 'Continue reading' : 'Start reading'} →</button>` : ''}</div>
+  <h2>Required for you <span class="muted" style="font-family:inherit;letter-spacing:0">(${m.pr.docs} of ${m.pr.docsTotal} done)</span></h2>
+  ${req.map(docRow).join('') || '<p class="muted">No required documents yet.</p>'}
+  ${docsDone() ? `<div class="banner good">🎉 You have read all your required documents. <button class="btn sm" style="margin-left:8px" data-act="go" data-view="quiz">Go to Knowledge Check</button></div>` : ''}
+  ${opt.length ? `<h2>Recommended <span class="muted" style="font-family:inherit;letter-spacing:0">(optional)</span></h2><p class="muted">These belong to other stations. You can read them any time — they are not required.</p>${opt.map(docRow).join('')}` : ''}`;
 }
 function vDoc() {
-  const d = D.docs.find(x => x.id === ui.id); if (!d) return vDocs();
-  const r = D.me.docs[d.id] || {};
+  const i = D.docs.findIndex(x => x.id === ui.id); if (i < 0) return vDocs();
+  const d = D.docs[i], r = D.me.docs[d.id] || {}, prev = D.docs[i - 1], next = D.docs[i + 1], done = !!r.ackAt;
+  const afterLabel = next ? 'Next document →' : 'Finish';
   return `<button class="btn ghost sm" data-act="go" data-view="docs">← All documents</button>
-  <h1 style="margin-top:12px">${esc(d.icon)} ${esc(d.title)}</h1><div class="card doc">${md(d.body)}</div><div id="docend"></div>
-  <div class="card">${r.ackAt ? `<div class="banner good" style="margin:0">✓ You confirmed on ${fmtDT(r.ackAt)} that you have read and understood this document.</div>`
-      : `<p class="muted" id="ackhint">Scroll to the end of the document to confirm.</p><button class="btn block" id="ackbtn" data-act="ack" data-id="${esc(d.id)}" disabled>I have read and understood this document</button>`}</div>`;
+  <h1 style="margin-top:12px">${esc(d.icon)} ${esc(d.title)}</h1>
+  ${d.required ? '' : '<div class="banner">📘 <b>Recommended reading</b> — not required for your station(s), but it helps you understand the whole store.</div>'}
+  <div class="card doc">${md(d.body)}</div><div id="docend"></div>
+  <div class="card">${done ? `<div class="banner good" style="margin:0 0 12px">✓ You confirmed on ${fmtDT(r.ackAt)} that you have read and understood this document.</div>` : `<p class="muted" id="ackhint">Scroll to the end of the document to continue.</p>`}
+  <div class="row" style="flex-wrap:nowrap">${prev ? `<button class="btn ghost" data-act="openDoc" data-id="${esc(prev.id)}" aria-label="Previous document">←</button>` : ''}
+  ${done ? (next ? `<button class="btn" style="flex:1" data-act="openDoc" data-id="${esc(next.id)}">Next document →</button>` : `<button class="btn" style="flex:1" data-act="go" data-view="docs">Back to all documents</button>`)
+      : `<button class="btn" style="flex:1" id="ackbtn" data-act="ackNext" data-id="${esc(d.id)}" disabled>I have read and understood · ${afterLabel}</button>`}</div>
+  <p style="margin:10px 0 0;text-align:center"><a href="#" data-act="go" data-view="docs">Back to all documents</a></p></div>`;
 }
 function checkEnd() {
   const b = $('#ackbtn'), e = $('#docend'); if (!b || !e) return;
@@ -266,7 +282,7 @@ function vQuiz() {
     <button class="btn block" data-act="submitQuiz">Submit answers</button>`;
   }
   const due = m.pr.nextDue;
-  return `<h1>Knowledge Check</h1><div class="card"><p>Answer <b>${D.settings.quizN} random questions</b> from the documents you have read. You need <b>${pct(D.settings.pass)}%</b> to pass. Questions and answers are shuffled every time.</p>
+  return `<h1>Knowledge Check</h1><div class="card"><p>Answer <b>${D.settings.quizN} random questions</b> from your required documents. You need <b>${pct(D.settings.pass)}%</b> to pass. Questions and answers are shuffled every time.</p>
   ${due ? `<p class="muted">You repeat this check about every ${Math.round(D.settings.refreshDays / 30)} months. Your next one is due <b>${fmtDate(due)}</b>${due <= todayIso() ? ' — <b>due now</b>' : ''}.</p>` : ''}
   <button class="btn" data-act="startQuiz">${m.attempts.length ? 'Start a new Knowledge Check' : 'Start Knowledge Check'}</button></div>
   ${m.attempts.length ? '<h2>My results</h2>' + m.attempts.slice().reverse().map(a => `<div class="card"><div class="row" style="justify-content:space-between"><div><b>${a.score}/${a.total} (${pct(a.score / a.total)}%)</b><br><span class="muted">${fmtDT(a.date)}</span></div><div class="row">${a.pass ? badge('done', 'Passed') : badge('fail', 'Not passed')}<button class="btn ghost sm" data-act="viewAttempt" data-id="${esc(a.id)}">Review</button></div></div></div>`).join('') : ''}`;
@@ -341,7 +357,8 @@ function vStaffList() {
 }
 function vStaffDetail() {
   const s = stOf(ui.id); if (!s) return vStaffList();
-  const docs = A.docs.filter(d => d.stations.includes('all') || d.stations.some(k => (s.stations || []).includes(k)));
+  const isReq = d => d.stations.includes('all') || d.stations.some(k => (s.stations || []).includes(k));
+  const docs = A.docs.filter(isReq), optDocs = A.docs.filter(d => !isReq(d));
   const items = A.practical.filter(p => p.station === 'all' || (s.stations || []).includes(p.station));
   const p = s.pr, allDone = p.forms >= p.formsTotal && p.docs >= p.docsTotal && p.passed && p.pracDone >= p.pracTotal;
   const groups = ['all', ...Object.keys(A.stations)].filter(k => items.some(i => i.station === k));
@@ -351,7 +368,8 @@ function vStaffDetail() {
   <div class="row" style="margin-top:10px"><button class="btn ghost sm" data-act="resendCode" data-id="${s.id}">✉ Resend staff code email</button></div></div>
   <div class="card"><h2>Stations</h2><p class="muted">Add a station when the person starts training there. New documents and practical items appear for them automatically.</p>${stationBoxes('sd', s.stations)}<button class="btn sm" style="margin-top:10px" data-act="saveStations" data-id="${s.id}">Save stations</button></div>
   <div class="card"><h2>1 · Employment forms (${p.formsReceived}/${p.formsTotal} received)</h2>${A.settings.forms.map(f => { const rec = s.formsReceived[f.id], sent = s.formsSent[f.id]; return `<label class="item"><input type="checkbox" data-act="formReceived" data-sid="${s.id}" data-id="${esc(f.id)}" ${rec ? 'checked' : ''}><span class="info">${esc(f.title)}<br><span class="muted">${rec ? 'Received ' + fmtDate(rec.date) : sent ? 'Staff says emailed ' + fmtDT(sent) : 'Not sent yet'}</span></span></label>`; }).join('')}<p class="muted">Tick "received" when the form arrives at ${esc(A.settings.returnEmail)}.</p></div>
-  <div class="card"><h2>2 · Required reading (${p.docs}/${p.docsTotal})</h2>${docs.map(d => { const r = s.docs[d.id] || {}; return `<div class="item"><div>${r.ackAt ? '✅' : '⬜'}</div><div class="info">${esc(d.title)}<br><span class="muted">${r.ackAt ? 'Read & understood ' + fmtDT(r.ackAt) : r.openedAt ? 'Opened ' + fmtDT(r.openedAt) + ' — not confirmed' : 'Not opened'}</span></div></div>`; }).join('')}</div>
+  <div class="card"><h2>2 · Required reading (${p.docs}/${p.docsTotal})</h2>${docs.map(d => { const r = s.docs[d.id] || {}; return `<div class="item"><div>${r.ackAt ? '✅' : '⬜'}</div><div class="info">${esc(d.title)}<br><span class="muted">${r.ackAt ? 'Read & understood ' + fmtDT(r.ackAt) : r.openedAt ? 'Opened ' + fmtDT(r.openedAt) + ' — not confirmed' : 'Not opened'}</span></div></div>`; }).join('')}
+  ${optDocs.length ? `<h3 style="margin-top:14px">Recommended reading (optional) — ${optDocs.filter(d => (s.docs[d.id] || {}).ackAt).length} of ${optDocs.length} read</h3>` + optDocs.map(d => { const r = s.docs[d.id] || {}; return `<div class="item"><div>${r.ackAt ? '✅' : '▫️'}</div><div class="info">${esc(d.title)}${r.ackAt ? `<br><span class="muted">Read ${fmtDT(r.ackAt)}</span>` : ''}</div></div>`; }).join('') : ''}</div>
   <div class="card"><h2>3 · Knowledge Check results</h2>${p.nextDue ? `<p class="muted">Next check due ${fmtDate(p.nextDue)}</p>` : ''}${s.attempts.length ? s.attempts.slice().reverse().map(a => `<div class="item"><div class="info"><b>${a.score}/${a.total} (${pct(a.score / a.total)}%)</b> ${a.pass ? badge('done', 'Passed') : badge('fail', 'Not passed')}<br><span class="muted">${fmtDT(a.date)}</span></div><button class="btn ghost sm" data-act="adminAttempt" data-sid="${s.id}" data-id="${esc(a.id)}">View answers</button></div>`).join('') : '<p class="muted">No attempts yet.</p>'}</div>
   <div class="card"><h2>4 · On-the-job sign-off (${p.pracDone}/${p.pracTotal})</h2>${groups.map(k => `<h3 style="margin-top:12px">${k === 'all' ? 'All staff' : esc(A.stations[k])}</h3>` + items.filter(i => i.station === k).map(x => { const r = s.practical[x.id]; return `<label class="item"><input type="checkbox" data-act="prac" data-sid="${s.id}" data-id="${esc(x.id)}" ${r ? 'checked' : ''}><span class="info">${esc(x.text)}${r ? `<br><span class="muted">Signed ${fmtDate(r.date)}</span>` : ''}</span></label>`; }).join('')).join('')}</div>
   <div class="card"><h2>5 · Final sign-off</h2>${s.signoff ? `<div class="banner good">Signed off by <b>${esc(s.signoff.by)}</b> on ${fmtDate(s.signoff.date)}${s.signoff.note ? '<br>“' + esc(s.signoff.note) + '”' : ''}</div><div class="row"><button class="btn" data-act="record" data-id="${s.id}">🖨 Print onboarding record</button><button class="btn bad" data-act="revokeSign" data-id="${s.id}">Remove sign-off</button></div>`
@@ -371,7 +389,7 @@ function vDocsAdmin() {
     const d = ui.editDoc === 'new' ? { id: '', title: '', icon: '📄', stations: ['all'], body: '' } : A.docs.find(x => x.id === ui.editDoc);
     return `<button class="btn ghost sm" data-act="cancelDoc">← Documents</button><h2 style="margin-top:12px">${ui.editDoc === 'new' ? 'New document' : 'Edit document'}</h2>
     <div class="card"><div class="grid"><div><label class="f req" for="ed-title">Title</label><input id="ed-title" value="${esc(d.title)}"></div><div><label class="f" for="ed-icon">Icon (emoji)</label><input id="ed-icon" maxlength="4" value="${esc(d.icon)}"></div></div>
-    <label class="f">Who must read it</label><div class="row">${[['all', 'Everyone'], ...Object.entries(A.stations)].map(([k, v]) => `<label class="row" style="gap:6px"><input type="checkbox" class="ed-st" value="${k}" ${d.stations.includes(k) ? 'checked' : ''}> ${esc(v)}</label>`).join('')}</div>
+    <label class="f">Required for (everyone else can still open it as recommended reading)</label><div class="row">${[['all', 'Everyone'], ...Object.entries(A.stations)].map(([k, v]) => `<label class="row" style="gap:6px"><input type="checkbox" class="ed-st" value="${k}" ${d.stations.includes(k) ? 'checked' : ''}> ${esc(v)}</label>`).join('')}</div>
     <label class="f" for="ed-body">Content</label><textarea id="ed-body" style="min-height:360px;font-family:Consolas,monospace;font-size:.9rem">${esc(d.body)}</textarea>
     <p class="muted"># Heading · ## Sub-heading · - bullet · &gt; highlighted line · **bold** · table rows as | a | b | (first row is the header)</p>
     <div class="row"><button class="btn" data-act="saveDoc">💾 Save</button><button class="btn ghost" data-act="cancelDoc">Cancel</button></div></div>`;
@@ -451,7 +469,14 @@ async function act(t) {
     /* staff */
     case 'formSent': { const ok = await sop('formSent', { formId: d.id, value: t.checked }); render(); if (ok) toast(t.checked ? 'Noted — thank you' : 'Unticked'); break; }
     case 'openDoc': { ui.view = 'doc'; ui.id = d.id; render(); window.scrollTo(0, 0); await sop('openDoc', { docId: d.id }); break; }
-    case 'ack': { const ok = await sop('ack', { docId: d.id }); if (ok) { render(); toast('Thank you — recorded'); } break; }
+    case 'ackNext': {
+      const ok = await sop('ack', { docId: d.id }); if (!ok) break;
+      const i = D.docs.findIndex(x => x.id === d.id), next = D.docs[i + 1];
+      toast('Recorded ✓');
+      if (next && (next.required || !docsDone())) { ui.view = 'doc'; ui.id = next.id; render(); window.scrollTo(0, 0); sop('openDoc', { docId: next.id }); }
+      else { ui.view = 'docs'; ui.id = null; render(); window.scrollTo(0, 0); }
+      break;
+    }
     case 'startQuiz': { const ok = await sop('startQuiz'); if (ok) { ui.id = null; render(); window.scrollTo(0, 0); } break; }
     case 'submitQuiz': {
       const n = D.me.pending.items.length, picks = [];
