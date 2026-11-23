@@ -271,27 +271,34 @@ function checkEnd() {
   const b = $('#ackbtn'), e = $('#docend'); if (!b || !e) return;
   if (e.getBoundingClientRect().top < window.innerHeight - 10) { b.disabled = false; const h = $('#ackhint'); if (h) h.textContent = 'Thank you — you can confirm now.'; }
 }
+const bonusPts = a => (0.5 * (a.bonusCorrect || 0)).toFixed(1);
+const attTxt = a => `${a.score}/${a.total} required (${pct(a.score / a.total)}%)${a.bonusTotal ? ` + ${bonusPts(a)} bonus` : ''}`;
+const qTags = it => `${it.kind === 'bonus' ? '<span class="badge s-done">Bonus · 0.5 point</span> ' : ''}${it.critical ? '<span class="badge s-fail">⚠ Safety-critical</span> ' : ''}`;
 function vQuiz() {
   const m = D.me;
   if (!docsDone()) return `<h1>Knowledge Check</h1><div class="banner">The Knowledge Check unlocks after you have read all required documents (${m.pr.docs} of ${m.pr.docsTotal} done).</div><button class="btn" data-act="go" data-view="docs">Go to documents</button>`;
   const shown = m.attempts.find(a => a.id === ui.attemptId);
   if (ui.id === 'result' && shown) return vAttempt(shown, true);
   if (m.pending) {
-    return `<h1>Knowledge Check</h1><p class="muted">Choose one answer for each question. ${m.pending.items.length} questions · pass mark ${pct(D.settings.pass)}%.</p>
-    ${m.pending.items.map((it, i) => `<div class="card"><h3>${i + 1}. ${esc(it.q)}</h3>${it.options.map((o, j) => `<label class="opt"><input type="radio" name="q${i}" value="${j}"><span>${esc(o)}</span></label>`).join('')}</div>`).join('')}
+    const nb = m.pending.items.filter(i => i.kind === 'bonus').length;
+    return `<h1>Knowledge Check</h1><p class="muted">Choose one answer for each question. ${m.pending.items.length - nb} required question${m.pending.items.length - nb === 1 ? '' : 's'}${nb ? ` + ${nb} bonus question${nb > 1 ? 's' : ''} from recommended reading you have read` : ''} · you need ${pct(D.settings.pass)}% of the required questions, and all safety-critical questions must be correct.</p>
+    ${m.pending.items.map((it, i) => `<div class="card"><div style="margin-bottom:6px">${qTags(it)}</div><h3>${i + 1}. ${esc(it.q)}</h3>${it.options.map((o, j) => `<label class="opt"><input type="radio" name="q${i}" value="${j}"><span>${esc(o)}</span></label>`).join('')}</div>`).join('')}
     <button class="btn block" data-act="submitQuiz">Submit answers</button>`;
   }
   const due = m.pr.nextDue;
-  return `<h1>Knowledge Check</h1><div class="card"><p>Answer <b>${D.settings.quizN} random questions</b> from your required documents. You need <b>${pct(D.settings.pass)}%</b> to pass. Questions and answers are shuffled every time.</p>
+  return `<h1>Knowledge Check</h1><div class="card"><p>Answer about <b>${D.settings.quizN} random questions</b>, mostly from your required documents. You need <b>${pct(D.settings.pass)}%</b> of the required questions correct, and <b>every safety-critical question</b> must be right.</p>
+  <p class="muted">If you have read any recommended documents, a few <b>bonus questions</b> from them may appear. Each correct bonus answer earns 0.5 point and <b>never counts against you</b>. Questions and answers are shuffled every time.</p>
   ${due ? `<p class="muted">You repeat this check about every ${Math.round(D.settings.refreshDays / 30)} months. Your next one is due <b>${fmtDate(due)}</b>${due <= todayIso() ? ' — <b>due now</b>' : ''}.</p>` : ''}
   <button class="btn" data-act="startQuiz">${m.attempts.length ? 'Start a new Knowledge Check' : 'Start Knowledge Check'}</button></div>
-  ${m.attempts.length ? '<h2>My results</h2>' + m.attempts.slice().reverse().map(a => `<div class="card"><div class="row" style="justify-content:space-between"><div><b>${a.score}/${a.total} (${pct(a.score / a.total)}%)</b><br><span class="muted">${fmtDT(a.date)}</span></div><div class="row">${a.pass ? badge('done', 'Passed') : badge('fail', 'Not passed')}<button class="btn ghost sm" data-act="viewAttempt" data-id="${esc(a.id)}">Review</button></div></div></div>`).join('') : ''}`;
+  ${m.attempts.length ? '<h2>My results</h2>' + m.attempts.slice().reverse().map(a => `<div class="card"><div class="row" style="justify-content:space-between"><div><b>${attTxt(a)}</b><br><span class="muted">${fmtDT(a.date)}</span></div><div class="row">${a.pass ? badge('done', 'Passed') : badge('fail', 'Not passed')}<button class="btn ghost sm" data-act="viewAttempt" data-id="${esc(a.id)}">Review</button></div></div></div>`).join('') : ''}`;
 }
 function vAttempt(a, mine) {
   return `<h1>${mine ? 'Your result' : 'Quiz result'}</h1>
-  <div class="card"><div class="banner ${a.pass ? 'good' : 'bad'}" style="margin:0"><h2 style="margin:0">${a.score}/${a.total} — ${pct(a.score / a.total)}%</h2>${a.pass ? '🎉 Passed' : 'Not passed — pass mark was ' + pct(a.passMark) + '%'} · ${fmtDT(a.date)}</div></div>
+  <div class="card"><div class="banner ${a.pass ? 'good' : 'bad'}" style="margin:0"><h2 style="margin:0">${a.score}/${a.total} required — ${pct(a.score / a.total)}%</h2>
+  ${a.pass ? '🎉 Passed' : (a.critMissed ? 'Not passed — you missed ' + a.critMissed + ' safety-critical question' + (a.critMissed > 1 ? 's' : '') + '. These must all be correct.' : 'Not passed — you need ' + pct(a.passMark) + '% of the required questions.')} · ${fmtDT(a.date)}
+  ${a.bonusTotal ? `<br>⭐ Bonus: ${a.bonusCorrect}/${a.bonusTotal} correct = ${bonusPts(a)} point${bonusPts(a) === '1.0' ? '' : 's'}` : ''}<br><span class="muted">Total points: ${(a.points !== undefined ? a.points : a.score).toFixed(1)}</span></div></div>
   ${!a.pass && mine ? '<div class="banner">Re-read the documents shown under each wrong answer, then try again. You will get a new random set of questions.</div>' : ''}
-  ${a.items.map((it, i) => { const ok = it.pick === it.correct; return `<div class="card"><h3>${i + 1}. ${esc(it.q)} ${ok ? '✅' : '❌'}</h3>${it.options.map((o, j) => `<div class="opt ${j === it.correct ? 'right' : j === it.pick ? 'wrong' : ''}" style="cursor:default">${j === it.correct ? '✔' : j === it.pick ? '✘' : '○'} <span>${esc(o)}${j === it.pick ? ' <span class="muted">(selected)</span>' : ''}</span></div>`).join('')}${ok ? '' : `<div class="muted">Review: ${esc(it.docTitle)}</div>`}</div>`; }).join('')}
+  ${a.items.map((it, i) => { const ok = it.pick === it.correct; return `<div class="card"><div style="margin-bottom:6px">${qTags(it)}</div><h3>${i + 1}. ${esc(it.q)} ${ok ? '✅' : '❌'}</h3>${it.options.map((o, j) => `<div class="opt ${j === it.correct ? 'right' : j === it.pick ? 'wrong' : ''}" style="cursor:default">${j === it.correct ? '✔' : j === it.pick ? '✘' : '○'} <span>${esc(o)}${j === it.pick ? ' <span class="muted">(selected)</span>' : ''}</span></div>`).join('')}${ok ? '' : `<div class="muted">Review: ${esc(it.docTitle)}</div>`}</div>`; }).join('')}
   ${mine ? `<button class="btn" data-act="go" data-view="quiz">Back</button>` : ''}`;
 }
 function vPractical() {
@@ -370,7 +377,7 @@ function vStaffDetail() {
   <div class="card"><h2>1 · Employment forms (${p.formsReceived}/${p.formsTotal} received)</h2>${A.settings.forms.map(f => { const rec = s.formsReceived[f.id], sent = s.formsSent[f.id]; return `<label class="item"><input type="checkbox" data-act="formReceived" data-sid="${s.id}" data-id="${esc(f.id)}" ${rec ? 'checked' : ''}><span class="info">${esc(f.title)}<br><span class="muted">${rec ? 'Received ' + fmtDate(rec.date) : sent ? 'Staff says emailed ' + fmtDT(sent) : 'Not sent yet'}</span></span></label>`; }).join('')}<p class="muted">Tick "received" when the form arrives at ${esc(A.settings.returnEmail)}.</p></div>
   <div class="card"><h2>2 · Required reading (${p.docs}/${p.docsTotal})</h2>${docs.map(d => { const r = s.docs[d.id] || {}; return `<div class="item"><div>${r.ackAt ? '✅' : '⬜'}</div><div class="info">${esc(d.title)}<br><span class="muted">${r.ackAt ? 'Read & understood ' + fmtDT(r.ackAt) : r.openedAt ? 'Opened ' + fmtDT(r.openedAt) + ' — not confirmed' : 'Not opened'}</span></div></div>`; }).join('')}
   ${optDocs.length ? `<h3 style="margin-top:14px">Recommended reading (optional) — ${optDocs.filter(d => (s.docs[d.id] || {}).ackAt).length} of ${optDocs.length} read</h3>` + optDocs.map(d => { const r = s.docs[d.id] || {}; return `<div class="item"><div>${r.ackAt ? '✅' : '▫️'}</div><div class="info">${esc(d.title)}${r.ackAt ? `<br><span class="muted">Read ${fmtDT(r.ackAt)}</span>` : ''}</div></div>`; }).join('') : ''}</div>
-  <div class="card"><h2>3 · Knowledge Check results</h2>${p.nextDue ? `<p class="muted">Next check due ${fmtDate(p.nextDue)}</p>` : ''}${s.attempts.length ? s.attempts.slice().reverse().map(a => `<div class="item"><div class="info"><b>${a.score}/${a.total} (${pct(a.score / a.total)}%)</b> ${a.pass ? badge('done', 'Passed') : badge('fail', 'Not passed')}<br><span class="muted">${fmtDT(a.date)}</span></div><button class="btn ghost sm" data-act="adminAttempt" data-sid="${s.id}" data-id="${esc(a.id)}">View answers</button></div>`).join('') : '<p class="muted">No attempts yet.</p>'}</div>
+  <div class="card"><h2>3 · Knowledge Check results</h2>${p.nextDue ? `<p class="muted">Next check due ${fmtDate(p.nextDue)}</p>` : ''}${s.attempts.length ? s.attempts.slice().reverse().map(a => `<div class="item"><div class="info"><b>${attTxt(a)}</b> ${a.pass ? badge('done', 'Passed') : badge('fail', 'Not passed')}<br><span class="muted">${fmtDT(a.date)}</span></div><button class="btn ghost sm" data-act="adminAttempt" data-sid="${s.id}" data-id="${esc(a.id)}">View answers</button></div>`).join('') : '<p class="muted">No attempts yet.</p>'}</div>
   <div class="card"><h2>4 · On-the-job sign-off (${p.pracDone}/${p.pracTotal})</h2>${groups.map(k => `<h3 style="margin-top:12px">${k === 'all' ? 'All staff' : esc(A.stations[k])}</h3>` + items.filter(i => i.station === k).map(x => { const r = s.practical[x.id]; return `<label class="item"><input type="checkbox" data-act="prac" data-sid="${s.id}" data-id="${esc(x.id)}" ${r ? 'checked' : ''}><span class="info">${esc(x.text)}${r ? `<br><span class="muted">Signed ${fmtDate(r.date)}</span>` : ''}</span></label>`; }).join('')).join('')}</div>
   <div class="card"><h2>5 · Final sign-off</h2>${s.signoff ? `<div class="banner good">Signed off by <b>${esc(s.signoff.by)}</b> on ${fmtDate(s.signoff.date)}${s.signoff.note ? '<br>“' + esc(s.signoff.note) + '”' : ''}</div><div class="row"><button class="btn" data-act="record" data-id="${s.id}">🖨 Print onboarding record</button><button class="btn bad" data-act="revokeSign" data-id="${s.id}">Remove sign-off</button></div>`
       : `${allDone ? '' : '<p class="muted">All four steps above should be complete before sign-off.</p>'}<div class="grid"><div><label class="f req" for="so-by">Signed off by (your name)</label><input id="so-by"></div><div><label class="f" for="so-note">Note (optional)</label><input id="so-note"></div></div><button class="btn" style="margin-top:12px" data-act="signoff" data-id="${s.id}">✔ Sign off onboarding</button>`}</div>`;
@@ -378,7 +385,7 @@ function vStaffDetail() {
 function vResults() {
   const all = []; A.staff.forEach(s => s.attempts.forEach(a => all.push({ s, a }))); all.sort((x, y) => y.a.date.localeCompare(x.a.date));
   return `<h2>Quiz results</h2><p class="muted">Every Knowledge Check attempt, newest first. Pass mark: ${pct(A.settings.pass)}%.</p>
-  <div class="card">${all.length ? `<div class="tw"><table><tr><th>Date</th><th>Team member</th><th class="c">Score</th><th class="c">Result</th><th></th></tr>${all.map(({ s, a }) => `<tr><td>${fmtDT(a.date)}</td><td>${esc(nameOf(s))}</td><td class="c">${a.score}/${a.total} (${pct(a.score / a.total)}%)</td><td class="c">${a.pass ? badge('done', 'Passed') : badge('fail', 'Not passed')}</td><td><button class="btn ghost sm" data-act="adminAttempt" data-sid="${s.id}" data-id="${esc(a.id)}">View answers</button></td></tr>`).join('')}</table></div>` : '<p class="muted">No attempts yet.</p>'}</div>`;
+  <div class="card">${all.length ? `<div class="tw"><table><tr><th>Date</th><th>Team member</th><th class="c">Score</th><th class="c">Result</th><th></th></tr>${all.map(({ s, a }) => `<tr><td>${fmtDT(a.date)}</td><td>${esc(nameOf(s))}</td><td class="c">${attTxt(a)}</td><td class="c">${a.pass ? badge('done', 'Passed') : badge('fail', 'Not passed')}</td><td><button class="btn ghost sm" data-act="adminAttempt" data-sid="${s.id}" data-id="${esc(a.id)}">View answers</button></td></tr>`).join('')}</table></div>` : '<p class="muted">No attempts yet.</p>'}</div>`;
 }
 function vAdminAttempt() {
   const s = stOf(ui.sid), a = s && s.attempts.find(x => x.id === ui.id); if (!a) return vResults();
@@ -401,6 +408,7 @@ function qForm(q) {
   return `<div class="sub2"><label class="f">Document</label><select id="eq-doc">${A.docs.map(d => `<option value="${esc(d.id)}" ${q.docId === d.id ? 'selected' : ''}>${esc(d.title)}</option>`).join('')}</select>
   <label class="f req">Question</label><input id="eq-q" value="${esc(q.q)}"><label class="f">Answers (select the correct one)</label>
   ${[0, 1, 2, 3].map(i => `<div class="row" style="flex-wrap:nowrap;margin-bottom:6px"><input type="radio" name="eq-a" value="${i}" ${q.answer === i ? 'checked' : ''}><input class="eq-o" value="${esc(q.options[i] || '')}" placeholder="Answer ${i + 1}"></div>`).join('')}
+  <label class="row" style="gap:8px;margin-top:6px"><input type="checkbox" id="eq-crit" ${q.critical ? 'checked' : ''}> ⚠ Critical question (safety) — must be answered correctly to pass</label>
   <div class="row" style="margin-top:8px"><button class="btn sm" data-act="saveQ">Save</button><button class="btn ghost sm" data-act="cancelQ">Cancel</button></div></div>`;
 }
 function vBank() {
@@ -409,12 +417,15 @@ function vBank() {
   <p class="muted">Each Knowledge Check draws ${A.settings.quizN} random questions from the documents a team member must read.</p>
   <div class="card"><label class="f" for="qf">Filter by document</label><select id="qf" data-act="qfilter"><option value="all">All documents</option>${A.docs.map(d => `<option value="${esc(d.id)}" ${ui.qfilter === d.id ? 'selected' : ''}>${esc(d.title)}</option>`).join('')}</select></div>
   ${ui.editQ === 'new' ? `<div class="card">${qForm({ docId: ui.qfilter !== 'all' ? ui.qfilter : (A.docs[0] || {}).id, q: '', options: ['', '', '', ''], answer: 0 })}</div>` : ''}
-  <div class="card">${list.map(q => ui.editQ === q.id ? qForm(q) : `<div class="item" style="align-items:center"><div class="info"><b>${esc(q.q)}</b><br><span class="muted">✔ ${esc(q.options[q.answer])} · ${esc((A.docs.find(d => d.id === q.docId) || {}).title || '')}</span></div><button class="btn ghost sm" data-act="editQ" data-id="${esc(q.id)}">Edit</button><button class="btn bad sm" data-act="delQ" data-id="${esc(q.id)}">Delete</button></div>`).join('') || '<p class="muted">No questions.</p>'}</div>`;
+  <div class="card">${list.map(q => ui.editQ === q.id ? qForm(q) : `<div class="item" style="align-items:center"><div class="info"><b>${esc(q.q)}</b><br><span class="muted">${q.critical ? '⚠ critical · ' : ''}✔ ${esc(q.options[q.answer])} · ${esc((A.docs.find(d => d.id === q.docId) || {}).title || '')}</span></div><button class="btn ghost sm" data-act="editQ" data-id="${esc(q.id)}">Edit</button><button class="btn bad sm" data-act="delQ" data-id="${esc(q.id)}">Delete</button></div>`).join('') || '<p class="muted">No questions.</p>'}</div>`;
 }
 function vSettings() {
   const st = A.settings, grp = [['all', 'All staff'], ...Object.entries(A.stations)];
   const link = st.appUrl ? st.appUrl + '?join=' + st.joinKey : '';
-  return `<div class="card"><h2>Quiz settings</h2><div class="grid"><div><label class="f" for="s-pass">Pass mark (%)</label><input id="s-pass" type="number" min="1" max="100" value="${pct(st.pass)}"></div><div><label class="f" for="s-n">Questions per Knowledge Check</label><input id="s-n" type="number" min="3" max="30" value="${st.quizN}"></div><div><label class="f" for="s-days">Repeat the Knowledge Check every (days)</label><input id="s-days" type="number" min="7" max="730" value="${st.refreshDays}"></div></div></div>
+  return `<div class="card"><h2>Quiz settings</h2><div class="grid"><div><label class="f" for="s-pass">Pass mark (%)</label><input id="s-pass" type="number" min="1" max="100" value="${pct(st.pass)}"></div><div><label class="f" for="s-n">Questions per Knowledge Check</label><input id="s-n" type="number" min="3" max="30" value="${st.quizN}"></div><div><label class="f" for="s-days">Repeat the Knowledge Check every (days)</label><input id="s-days" type="number" min="7" max="730" value="${st.refreshDays}"></div>
+  <div><label class="f" for="s-bonus">Bonus questions (% of the quiz, from recommended reading the person has read)</label><input id="s-bonus" type="number" min="0" max="50" value="${Math.round((st.bonusPct === undefined ? 0.2 : st.bonusPct) * 100)}"></div>
+  <div><label class="f" for="s-crit">Critical (safety) questions included in every quiz</label><input id="s-crit" type="number" min="0" max="5" value="${st.criticalN === undefined ? 2 : st.criticalN}"></div></div>
+  <p class="muted" style="margin:10px 0 0">The pass mark is measured on the <b>required</b> questions only (1 point each). Bonus questions are worth 0.5 point each and never count against anyone. Every critical question in a quiz must be answered correctly.</p></div>
   <div class="card"><h2>Emails</h2><div class="grid"><div><label class="f" for="s-mgr">Manager notification email</label><input id="s-mgr" type="email" value="${esc(st.managerEmail)}"></div><div><label class="f" for="s-ret">Staff email completed forms to</label><input id="s-ret" type="email" value="${esc(st.returnEmail)}"></div></div>
   <label class="f" for="s-folder">Forms folder link (Google Drive)</label><input id="s-folder" value="${esc(st.folderUrl)}">
   <label class="f" for="s-forms">Forms list — one per line: Title | link</label><textarea id="s-forms" style="min-height:140px">${esc(st.forms.map(f => f.title + ' | ' + f.url).join('\n'))}</textarea></div>
@@ -514,13 +525,13 @@ async function act(t) {
     case 'editQ': ui.editQ = d.id; render(); break;
     case 'cancelQ': ui.editQ = null; render(); break;
     case 'saveQ': {
-      const r = $('input[name="eq-a"]:checked'), question = { id: ui.editQ === 'new' ? '' : ui.editQ, docId: $('#eq-doc').value, q: val('eq-q'), options: $$('.eq-o').map(o => o.value.trim()), answer: r ? +r.value : 0 };
+      const r = $('input[name="eq-a"]:checked'), question = { id: ui.editQ === 'new' ? '' : ui.editQ, docId: $('#eq-doc').value, q: val('eq-q'), options: $$('.eq-o').map(o => o.value.trim()), answer: r ? +r.value : 0, critical: $('#eq-crit').checked };
       if (await aop('saveQuestion', { question })) { ui.editQ = null; render(); } break;
     }
     case 'delQ': if (confirm('Delete this question?')) { if (await aop('deleteQuestion', { id: d.id })) render(); } break;
     case 'saveSettings': {
       const groups = {}; $$('.pr-box').forEach(b => groups[b.dataset.k] = b.value);
-      const a = { pass: val('s-pass'), quizN: val('s-n'), refreshDays: val('s-days'), managerEmail: val('s-mgr'), returnEmail: val('s-ret'), folderUrl: val('s-folder'), formsText: $('#s-forms').value, newPin: val('s-pin'), practicalGroups: groups };
+      const a = { pass: val('s-pass'), quizN: val('s-n'), refreshDays: val('s-days'), bonusPct: val('s-bonus'), criticalN: val('s-crit'), managerEmail: val('s-mgr'), returnEmail: val('s-ret'), folderUrl: val('s-folder'), formsText: $('#s-forms').value, newPin: val('s-pin'), practicalGroups: groups };
       const r = await aop('saveSettings', a); if (r) { if (a.newPin) ui.pin = a.newPin; render(); } break;
     }
     case 'newJoinKey': if (confirm('Create a new registration link? The old link will stop working.')) { if (await aop('newJoinKey')) render(); } break;
